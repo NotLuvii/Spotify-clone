@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Player</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div id="left" class="scrollable">
+            <h2>Playlists</h2>
+            <ul id="playlists"></ul>
+        </div>
+        <div id="center" class="scrollable">
+            <form id="searchForm">
+                <input type="text" id="searchInput" placeholder="Enter song name" required>
+                <button type="submit" id="searchButton">Search</button>
+            </form>
+            <ul id="results"></ul>
+            <ul id="playlistTracks" class="hidden"></ul>
+            <button id="backButton" class="hidden" onclick="goBack()">Back to Playlists/Search</button>
+        </div>
+        <div id="right" class="scrollable">
+            <h2>Lyrics</h2>
+            <div id="lyrics">No lyrics available</div>
+        </div>
+    </header>
+    <footer>
+        <div class="progress-bar" id="progressBar" onclick="skipTo(event)">
+            <div class="progress" id="progress"></div>
+        </div>
+        <div class="song-details">
+            <img id="songThumbnail" src="" alt="Song Thumbnail" class="hidden">
+            <div class="song-info">
+                <div id="songName"></div>
+                <div id="songArtist"></div>
+            </div>
+            <div class="media-controls">
+                <div class="controls">
+                    <img id="prevButton" src="assets/prev.jpg" alt="Previous" onclick="previousSong()">
+                    <img id="playPauseButton" src="assets/playpause.jpg" alt="Play/Pause" onclick="togglePlayPause()">
+                    <img id="nextButton" src="assets/next.jpg" alt="Next" onclick="nextSong()">
+                </div>
+            </div>
+        </div>
+    </footer>
+    <script>
+        let currentTrackUri = '';
+        let progressInterval;
+        let songDuration = 0;
+        let isPlaying = false;
+
+        document.getElementById('searchForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const query = document.getElementById('searchInput').value;
+            const response = await fetch(`/search?q=${query}`);
+            const data = await response.json();
+            displaySearchResults(data);
+        });
+
+        function displaySearchResults(data) {
+            const results = document.getElementById('results');
+            results.innerHTML = ''; // Clear existing search results
+            document.getElementById('playlistTracks').classList.add('hidden'); // Hide playlist view
+            document.getElementById('results').classList.remove('hidden'); // Show search results view
+            document.getElementById('backButton').classList.remove('hidden'); // Show back button
+
+            const maxResults = 5;
+            data.tracks.items.slice(0, maxResults).forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'resultItem';
+                li.innerHTML = `
+                            <img src="${item.album.images[0]?.url || 'path-to-default-image.jpg'}" alt="${item.name}">
+                            <div>
+                                <span class="songName">${item.name}</span>
+                                <span class="artistName">${item.artists.map(artist => artist.name).join(', ')}</span>
+                            </div>
+                        `;
+                li.onclick = () => playSong(item.uri, item.name, item.artists.map(artist => artist.name).join(', '), item.album.images[0]?.url || 'path-to-default-image.jpg');
+                results.appendChild(li);
+            });
+        }
+
+        async function fetchLyrics(track, artist) {
+            try {
+                const response = await fetch(`/lyrics?track=${track}&artist=${artist}`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch lyrics');
+                }
+                const data = await response.json();
+                document.getElementById('lyrics').innerText = data.lyrics;
+            } catch (error) {
+                console.error('Error fetching lyrics:', error.message);
+            }
+        }
+
+        async function playSong(uri, trackName, artistName, imageUrl) {
+            try {
+                currentTrackUri = uri;
+                const encodedUri = encodeURIComponent(uri);
+                const response = await fetch(`/track-duration?uri=${encodedUri}`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch track duration');
+                }
+                const data = await response.json();
+                songDuration = data.duration_ms / 1000;
+                await fetch(`/play?uri=${encodedUri}`);
+                isPlaying = true;
+                document.getElementById('songThumbnail').src = imageUrl;
+                document.getElementById('songThumbnail').classList.remove('hidden');
+                document.getElementById('songName').innerText = trackName;
+                document.getElementById('songArtist').innerText = artistName;
+                fetchLyrics(trackName, artistName);
+                adjustFooterHeight();
+                startProgressUpdater();
+            } catch (error) {
+                console.error('Error playing song:', error.message);
+            }
+        }
+
+        function startProgressUpdater() {
+            clearInterval(progressInterval);
+            progressInterval = setInterval(updateProgressBar, 100);
+        }
+
+        async function updateProgressBar() {
+            try {
+                const response = await fetch('/current-playback-state');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch current playback state');
+                }
+                const data = await response.json();
+                if (data.item.uri !== currentTrackUri) {
+                    // Track has changed, stop updating progress for this track
+                    clearInterval(progressInterval);
+                    return;
+                }
+                const progress = document.getElementById('progress');
+                const currentTime = data.progress_ms / 1000;
+                const width = (currentTime / songDuration) * 100;
+                progress.style.width = width + '%';
+            } catch (error) {
+                console.error('Error updating progress bar:', error.message);
+            }
+        }
+
+        async function skipTo(event) {
+            try {
+                const progressBar = document.getElementById('progressBar');
+                const percent = event.offsetX / progressBar.offsetWidth;
+                const seekTo = percent * songDuration * 1000;
+                await fetch(`/seek?position_ms=${Math.floor(seekTo)}`);
+                const progress = document.getElementById('progress');
+                progress.style.width = percent * 100 + '%';
+            } catch (error) {
+                console.error('Error skipping to position:', error.message);
+            }
+        }
+
+        async function fetchPlaylistTracks(playlistId) {
+            const response = await fetch(`/playlist-tracks?id=${playlistId}`);
+            const data = await response.json();
+            const playlistTracks = document.getElementById('playlistTracks');
+            playlistTracks.innerHTML = '';
+            data.items.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'playlistTrackItem';
+                li.innerHTML = `
+                                <img src="${item.track.album.images[0].url}" alt="${item.track.name}">
+                                <div>
+                                    <span class="songName">${item.track.name}</span>
+                                    <span class="artistName">${item.track.artists.map(artist => artist.name).join(', ')}</span>
+                                </div>
+                            `;
+                li.onclick = () => playSong(item.track.uri, item.track.name, item.track.artists.map(artist => artist.name).join(', '), item.track.album.images[0].url);
+                playlistTracks.appendChild(li);
+            });
+            playlistTracks.classList.remove('hidden');
+            document.getElementById('results').classList.add('hidden');
+            document.getElementById('backButton').classList.remove('hidden');
+        }
+
+        function goBack() {
+            document.getElementById('playlistTracks').classList.add('hidden');
+            document.getElementById('results').classList.remove('hidden');
+            document.getElementById('backButton').classList.add('hidden');
+        }
+
+        async function previousSong() {
+            try {
+                await fetch('/previous');
+            } catch (error) {
+                console.error('Error playing previous song:', error.message);
+            }
+        }
+
+        async function nextSong() {
+            try {
+                await fetch('/next');
+            } catch (error) {
+                console.error('Error playing next song:', error.message);
+            }
+        }
+
+        async function togglePlayPause() {
+            try {
+                const response = await fetch('/playpause');
+                if (!response.ok) {
+                    throw new Error('Failed to toggle play/pause');
+                }
+                const data = await response.json();
+                isPlaying = data.is_playing;
+                if (isPlaying) {
+                    startProgressUpdater();
+                } else {
+                    clearInterval(progressInterval);
+                }
+            } catch (error) {
+                console.error('Error toggling play/pause:', error.message);
+            }
+        }
+
+        async function fetchPlaylists() {
+            try {
+                console.log('Fetching playlists...');
+                const response = await fetch('/playlists');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch playlists');
+                }
+                const playlists = await response.json();
+                console.log('Fetched playlists:', playlists);
+
+                const playlistsElement = document.getElementById('playlists');
+                playlistsElement.innerHTML = ''; // Clear any existing playlists
+                playlists.forEach(playlist => {
+                    const li = document.createElement('li');
+                    li.className = 'playlistItem';
+                    li.innerHTML = `
+                            <img src="${playlist.images[0]?.url || 'path-to-default-image.jpg'}" alt="${playlist.name}">
+                            <span>${playlist.name}</span>
+                        `;
+                    li.onclick = () => fetchPlaylistTracks(playlist.id);
+                    playlistsElement.appendChild(li);
+                });
+            } catch (error) {
+                console.error('Error fetching playlists:', error.message);
+            }
+        }
+
+        async function updateCurrentTrackUI() {
+            try {
+                const response = await fetch('/current-playback-state');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch current playback state');
+                }
+                const data = await response.json();
+                if (data.is_playing) {
+                    currentTrackUri = data.item.uri;
+                    songDuration = data.item.duration_ms / 1000;
+                    document.getElementById('songThumbnail').src = data.item.album.images[0].url;
+                    document.getElementById('songThumbnail').classList.remove('hidden');
+                    document.getElementById('songName').innerText = data.item.name;
+                    document.getElementById('songArtist').innerText = data.item.artists.map(artist => artist.name).join(', ');
+                    adjustFooterHeight();
+                    startProgressUpdater();
+                } else {
+                    document.getElementById('songThumbnail').classList.add('hidden');
+                    document.getElementById('songName').innerText = '';
+                    document.getElementById('songArtist').innerText = '';
+                    clearInterval(progressInterval);
+                }
+            } catch (error) {
+                console.error('Error updating current track UI:', error.message);
+            }
+        }
+
+        function adjustFooterHeight() {
+            const footer = document.querySelector('footer');
+            const header = document.querySelector('header');
+            const footerHeight = footer.offsetHeight;
+            header.style.marginBottom = footerHeight + 'px';
+        }
+
+        window.onload = async () => {
+            console.log('Page loaded');
+            await fetchPlaylists();
+            updateCurrentTrackUI();
+            setInterval(updateCurrentTrackUI, 100);
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+C:\Users\luvid\Desktop\luvi\PORTFOLIO\Music Player\MusicPlayer\MusicPlayer\obj\Debug\MusicPlayer.njsproj.AssemblyReference.cache
+C:\Users\luvid\Desktop\luvi\PORTFOLIO\Music Player\MusicPlayer\MusicPlayer\obj\Debug\MusicPlayer.njsproj.CoreCompileInputs.cache
+C:\Users\luvid\Desktop\luvi\PORTFOLIO\Music Player\MusicPlayer\MusicPlayer\bin\Microsoft.NodejsTools.WebRole.dll
