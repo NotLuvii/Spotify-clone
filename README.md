@@ -4,7 +4,6 @@ This project is a web-based music player that emulates the core functionalities 
 
 ## Features
 
-- **User Authentication**: Secure user accounts with authentication to ensure a personalized experience.
 - **Browse and Search**: Explore a vast library of music, search for specific tracks, artists, or albums.
 - **Playlist Management**: Create, edit, and delete playlists to organize your music collection.
 - **Music Player**: Play, pause, skip, and control the volume of the currently playing track.
