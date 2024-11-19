@@ -1,4 +1,4 @@
-# Spotify Clone
+# Music Player
 
 This project is a web-based music player that emulates the core functionalities of Spotify, allowing users to browse and play songs, create playlists, and control playback through an intuitive interface.
 
